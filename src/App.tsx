@@ -34,48 +34,59 @@ export default function App() {
   const [manualInput, setManualInput] = useState('');
   const [showManual, setShowManual] = useState(false);
 
+  const [uploadPreview, setUploadPreview] = useState<string | null>(null);
+
   const onDrop = async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
     if (!file) return;
 
     setIsLoading(true);
     setError(null);
+    setUploadPreview(URL.createObjectURL(file));
+
     try {
       const reader = new FileReader();
-      reader.onload = async () => {
-        const base64Data = (reader.result as string).split(',')[1];
-        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-        const response = await ai.models.generateContent({
-          model: "gemini-3-flash-preview",
-          contents: [
-            {
-              inlineData: {
-                data: base64Data,
-                mimeType: file.type
-              }
-            },
-            {
-              text: "Extract all ingredients from this food label. Return ONLY the comma-separated list of ingredients."
+      const fileReadPromise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const dataUrl = await fileReadPromise;
+      const base64Data = dataUrl.split(',')[1];
+      
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: [
+          {
+            inlineData: {
+              data: base64Data,
+              mimeType: file.type
             }
-          ]
+          },
+          {
+            text: "Extract all ingredients from this food label. Return ONLY the comma-separated list of ingredients. If no ingredients are found, return an empty string."
+          }
+        ]
+      });
+      
+      const extractedIngredients = response.text?.trim() || '';
+      if (extractedIngredients && extractedIngredients.length > 5) {
+        const result = await analyzeIngredients(extractedIngredients);
+        setAnalysis(result);
+        setProduct({
+          name: "Scanned Label",
+          ingredients: extractedIngredients,
+          image: uploadPreview || URL.createObjectURL(file)
         });
-        
-        const extractedIngredients = response.text || '';
-        if (extractedIngredients) {
-          const result = await analyzeIngredients(extractedIngredients);
-          setAnalysis(result);
-          setProduct({
-            name: "Scanned Label",
-            ingredients: extractedIngredients,
-            image: URL.createObjectURL(file)
-          });
-        } else {
-          setError("Could not extract ingredients from the image. Please try a clearer photo or enter manually.");
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      setError("Failed to process image. Please try again.");
+      } else {
+        throw new Error("Could not extract ingredients from the image. Please try a clearer photo or enter manually.");
+      }
+    } catch (err: any) {
+      console.error("OCR Error:", err);
+      setError(err.message || "Failed to process image. Please try again.");
+      setUploadPreview(null);
     } finally {
       setIsLoading(false);
     }
@@ -143,6 +154,7 @@ export default function App() {
     setError(null);
     setManualInput('');
     setShowManual(false);
+    setUploadPreview(null);
   };
 
   return (
@@ -184,15 +196,22 @@ export default function App() {
               <div className="grid grid-cols-1 gap-4">
                 <button 
                   onClick={() => setIsScanning(true)}
-                  className="group relative overflow-hidden rounded-2xl bg-brand-600 p-8 text-white shadow-lg transition-all hover:bg-brand-700 active:scale-95"
+                  className="group relative overflow-hidden rounded-3xl bg-brand-600 p-10 text-white shadow-xl transition-all hover:bg-brand-700 hover:shadow-brand-200/50 active:scale-95"
                 >
                   <div className="relative z-10 flex flex-col items-center gap-4">
-                    <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm group-hover:scale-110 transition-transform">
-                      <Camera className="w-8 h-8" />
+                    <motion.div 
+                      animate={{ scale: [1, 1.1, 1] }}
+                      transition={{ duration: 2, repeat: Infinity }}
+                      className="rounded-full bg-white/20 p-5 backdrop-blur-sm group-hover:bg-white/30 transition-colors"
+                    >
+                      <Camera className="w-10 h-10" />
+                    </motion.div>
+                    <div className="space-y-1">
+                      <span className="text-2xl font-black block">Scan Barcode</span>
+                      <span className="text-sm font-medium opacity-80 block">Instant database lookup</span>
                     </div>
-                    <span className="text-lg font-bold">Scan Barcode</span>
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 </button>
 
                 <div className="flex gap-4">
@@ -267,13 +286,40 @@ export default function App() {
             <motion.div 
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center py-20 space-y-4"
+              className="flex flex-col items-center justify-center py-12 space-y-6"
             >
-              <Loader2 className="w-12 h-12 text-brand-600 animate-spin" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-slate-900">Analyzing Ingredients...</p>
-                <p className="text-sm text-slate-500">Gemini AI is decoding technical terms</p>
+              <div className="relative">
+                <Loader2 className="w-16 h-16 text-brand-600 animate-spin" />
+                {uploadPreview && (
+                  <motion.img 
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    src={uploadPreview} 
+                    className="absolute inset-0 w-16 h-16 object-cover rounded-full opacity-20"
+                  />
+                )}
               </div>
+              <div className="text-center space-y-2">
+                <p className="text-xl font-bold text-slate-900">
+                  {uploadPreview ? "Scanning Label..." : "Analyzing Ingredients..."}
+                </p>
+                <p className="text-sm text-slate-500 max-w-xs mx-auto">
+                  {uploadPreview 
+                    ? "Gemini AI is reading the text from your image. This may take a few seconds." 
+                    : "Decoding technical terms and INS codes for you."}
+                </p>
+              </div>
+              
+              {uploadPreview && (
+                <div className="w-full max-w-xs h-1 bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div 
+                    initial={{ width: "0%" }}
+                    animate={{ width: "100%" }}
+                    transition={{ duration: 5, ease: "linear" }}
+                    className="h-full bg-brand-500"
+                  />
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -381,10 +427,19 @@ export default function App() {
         </AnimatePresence>
 
         {error && (
-          <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700">
-            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p className="text-sm font-medium">{error}</p>
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mt-4 p-4 bg-red-50 border border-red-100 rounded-2xl flex items-center justify-between gap-3 text-red-700 shadow-sm"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="text-sm font-medium">{error}</p>
+            </div>
+            <button onClick={() => setError(null)} className="p-1 hover:bg-red-100 rounded-full transition-colors">
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
         )}
       </main>
 
