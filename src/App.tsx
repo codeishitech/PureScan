@@ -1,0 +1,399 @@
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Camera, 
+  Search, 
+  ScanBarcode, 
+  AlertCircle, 
+  CheckCircle2, 
+  Info, 
+  ChevronRight,
+  Loader2,
+  X,
+  Upload
+} from 'lucide-react';
+import { useDropzone } from 'react-dropzone';
+import { GoogleGenAI } from "@google/genai";
+import { BarcodeScanner } from './components/BarcodeScanner';
+import { fetchProductByBarcode } from './services/foodApi';
+import { analyzeIngredients } from './services/gemini';
+import { ProductData, AnalysisResult } from './types';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+
+export default function App() {
+  const [isScanning, setIsScanning] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [product, setProduct] = useState<ProductData | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [manualInput, setManualInput] = useState('');
+  const [showManual, setShowManual] = useState(false);
+
+  const onDrop = async (acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+        const response = await ai.models.generateContent({
+          model: "gemini-3-flash-preview",
+          contents: [
+            {
+              inlineData: {
+                data: base64Data,
+                mimeType: file.type
+              }
+            },
+            {
+              text: "Extract all ingredients from this food label. Return ONLY the comma-separated list of ingredients."
+            }
+          ]
+        });
+        
+        const extractedIngredients = response.text || '';
+        if (extractedIngredients) {
+          const result = await analyzeIngredients(extractedIngredients);
+          setAnalysis(result);
+          setProduct({
+            name: "Scanned Label",
+            ingredients: extractedIngredients,
+            image: URL.createObjectURL(file)
+          });
+        } else {
+          setError("Could not extract ingredients from the image. Please try a clearer photo or enter manually.");
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setError("Failed to process image. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop,
+    accept: { 'image/*': [] },
+    multiple: false
+  } as any);
+
+  // ... rest of the component ...
+
+  const handleScan = async (barcode: string) => {
+    setIsScanning(false);
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const data = await fetchProductByBarcode(barcode);
+      if (data) {
+        setProduct(data);
+        if (data.ingredients) {
+          const result = await analyzeIngredients(data.ingredients);
+          setAnalysis(result);
+        } else {
+          setError("Product found, but no ingredients list available. Please enter manually.");
+          setShowManual(true);
+        }
+      } else {
+        setError("Barcode not found in database. Please enter ingredients manually.");
+        setShowManual(true);
+      }
+    } catch (err) {
+      setError("An error occurred. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleManualSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!manualInput.trim()) return;
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await analyzeIngredients(manualInput);
+      setAnalysis(result);
+      setProduct({
+        name: "Manual Entry",
+        ingredients: manualInput
+      });
+      setShowManual(false);
+    } catch (err) {
+      setError("Failed to analyze ingredients. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const reset = () => {
+    setProduct(null);
+    setAnalysis(null);
+    setError(null);
+    setManualInput('');
+    setShowManual(false);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 pb-20">
+      {/* Header */}
+      <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-bottom border-slate-200">
+        <div className="max-w-2xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2" onClick={reset} style={{ cursor: 'pointer' }}>
+            <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+              <ScanBarcode className="text-white w-5 h-5" />
+            </div>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">PureScan</h1>
+          </div>
+          <button 
+            onClick={() => setShowManual(!showManual)}
+            className="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors"
+          >
+            Manual Entry
+          </button>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 pt-8">
+        <AnimatePresence mode="wait">
+          {!product && !isLoading && !showManual && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="space-y-8 text-center"
+            >
+              <div className="space-y-4">
+                <h2 className="text-3xl font-bold text-slate-900">Decode Your Food</h2>
+                <p className="text-slate-600 max-w-md mx-auto">
+                  Scan a barcode or upload a label to understand exactly what's in your food.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <button 
+                  onClick={() => setIsScanning(true)}
+                  className="group relative overflow-hidden rounded-2xl bg-brand-600 p-8 text-white shadow-lg transition-all hover:bg-brand-700 active:scale-95"
+                >
+                  <div className="relative z-10 flex flex-col items-center gap-4">
+                    <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm group-hover:scale-110 transition-transform">
+                      <Camera className="w-8 h-8" />
+                    </div>
+                    <span className="text-lg font-bold">Scan Barcode</span>
+                  </div>
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                </button>
+
+                <div className="flex gap-4">
+                  <div {...getRootProps()} className={cn(
+                    "flex-1 flex items-center justify-center gap-2 rounded-2xl bg-white border border-slate-200 p-4 font-medium text-slate-700 shadow-sm cursor-pointer transition-all",
+                    isDragActive ? "border-brand-500 bg-brand-50" : "hover:border-brand-200 hover:bg-brand-50"
+                  )}>
+                    <input {...getInputProps()} />
+                    <Upload className="w-5 h-5" />
+                    Upload Label
+                  </div>
+                  <button 
+                    onClick={() => setShowManual(true)}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-2xl bg-white border border-slate-200 p-4 font-medium text-slate-700 shadow-sm hover:border-brand-200 hover:bg-brand-50 transition-all"
+                  >
+                    <Search className="w-5 h-5" />
+                    Type Ingredients
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-8 grid grid-cols-3 gap-4">
+                {[
+                  { icon: Info, label: "INS Codes", color: "text-blue-500" },
+                  { icon: AlertCircle, label: "Additives", color: "text-orange-500" },
+                  { icon: CheckCircle2, label: "Health Score", color: "text-green-500" }
+                ].map((item, i) => (
+                  <div key={i} className="flex flex-col items-center gap-2">
+                    <item.icon className={cn("w-6 h-6", item.color)} />
+                    <span className="text-xs font-medium text-slate-500">{item.label}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+
+          {showManual && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Manual Entry</h2>
+                <button onClick={() => setShowManual(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <form onSubmit={handleManualSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Paste Ingredient List</label>
+                  <textarea 
+                    value={manualInput}
+                    onChange={(e) => setManualInput(e.target.value)}
+                    placeholder="e.g. Sugar, Palm Oil, INS 322, Artificial Flavors..."
+                    className="w-full h-40 p-4 rounded-xl border border-slate-200 focus:ring-2 focus:ring-brand-500 focus:border-transparent outline-none transition-all resize-none"
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  disabled={!manualInput.trim() || isLoading}
+                  className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-brand-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                >
+                  Analyze Now
+                </button>
+              </form>
+            </motion.div>
+          )}
+
+          {isLoading && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              className="flex flex-col items-center justify-center py-20 space-y-4"
+            >
+              <Loader2 className="w-12 h-12 text-brand-600 animate-spin" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-slate-900">Analyzing Ingredients...</p>
+                <p className="text-sm text-slate-500">Gemini AI is decoding technical terms</p>
+              </div>
+            </motion.div>
+          )}
+
+          {analysis && product && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="space-y-6"
+            >
+              {/* Product Info */}
+              <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 flex gap-4 items-center">
+                {product.image ? (
+                  <img src={product.image} alt={product.name} className="w-20 h-20 object-contain rounded-lg border border-slate-100" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-20 h-20 bg-slate-100 rounded-lg flex items-center justify-center">
+                    <ScanBarcode className="text-slate-400 w-8 h-8" />
+                  </div>
+                )}
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{product.name}</h3>
+                  <p className="text-sm text-slate-500">{product.brand || 'No brand info'}</p>
+                </div>
+              </div>
+
+              {/* Score Card */}
+              <div className={cn(
+                "rounded-3xl p-8 border-2 flex flex-col items-center text-center gap-4",
+                analysis.score === 'Healthy' ? "health-score-healthy" : 
+                analysis.score === 'Moderate' ? "health-score-moderate" : 
+                "health-score-risky"
+              )}>
+                <div className="text-sm font-bold uppercase tracking-widest opacity-70">Health Score</div>
+                <div className="text-5xl font-black">{analysis.score}</div>
+                <p className="text-sm font-medium max-w-xs">{analysis.summary}</p>
+              </div>
+
+              {/* Recommendation */}
+              <div className="bg-brand-50 border border-brand-100 rounded-2xl p-6">
+                <div className="flex items-start gap-3">
+                  <Info className="w-5 h-5 text-brand-600 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-brand-900">Recommendation</h4>
+                    <p className="text-sm text-brand-800">{analysis.recommendation}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Ingredients List */}
+              <div className="space-y-4">
+                <h4 className="text-lg font-bold px-2">Ingredient Breakdown</h4>
+                <div className="space-y-3">
+                  {analysis.ingredients.map((ing, idx) => (
+                    <motion.div 
+                      key={idx}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm hover:border-brand-200 transition-all"
+                    >
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-bold text-slate-900">{ing.name}</span>
+                        <span className={cn(
+                          "text-[10px] font-bold uppercase px-2 py-1 rounded-full",
+                          ing.risk === 'Low' ? "bg-green-100 text-green-600" :
+                          ing.risk === 'Medium' ? "bg-yellow-100 text-yellow-600" :
+                          "bg-red-100 text-red-600"
+                        )}>
+                          {ing.risk} Risk
+                        </span>
+                      </div>
+                      <p className="text-sm text-slate-600 mb-2">{ing.explanation}</p>
+                      <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter">
+                        Category: {ing.category}
+                      </span>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Additives */}
+              {analysis.additives.length > 0 && (
+                <div className="bg-slate-900 rounded-3xl p-6 text-white">
+                  <h4 className="font-bold mb-4 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-orange-400" />
+                    Identified Additives
+                  </h4>
+                  <div className="flex flex-wrap gap-2">
+                    {analysis.additives.map((add, i) => (
+                      <span key={i} className="bg-white/10 px-3 py-1 rounded-full text-xs font-medium">
+                        {add}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button 
+                onClick={reset}
+                className="w-full py-4 text-slate-500 font-medium hover:text-slate-900 transition-colors"
+              >
+                Scan Another Product
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {error && (
+          <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl flex items-center gap-3 text-red-700">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <p className="text-sm font-medium">{error}</p>
+          </div>
+        )}
+      </main>
+
+      {isScanning && (
+        <BarcodeScanner 
+          onScan={handleScan} 
+          onClose={() => setIsScanning(false)} 
+        />
+      )}
+    </div>
+  );
+}

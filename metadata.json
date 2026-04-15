@@ -1,0 +1,12 @@
+{
+  "name": "PureScan: Food Ingredient Decoder",
+  "description": "Scan food labels to decode technical ingredients, identify additives, and get instant health risk analysis using AI.",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "OCR",
+    "AI Analysis",
+    "Health Scoring"
+  ]
+}
