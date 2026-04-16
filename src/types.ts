@@ -15,6 +15,11 @@ export interface AnalysisResult {
     category: string;
     risk: 'Low' | 'Medium' | 'High';
   }>;
-  additives: string[];
+  additives: Array<{
+    name: string;
+    code?: string;
+    explanation: string;
+    risk: 'Low' | 'Medium' | 'High';
+  }>;
   recommendation: string;
 }

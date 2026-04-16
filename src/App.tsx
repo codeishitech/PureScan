@@ -401,16 +401,40 @@ export default function App() {
 
               {/* Additives */}
               {analysis.additives.length > 0 && (
-                <div className="bg-slate-900 rounded-3xl p-6 text-white">
-                  <h4 className="font-bold mb-4 flex items-center gap-2">
-                    <AlertCircle className="w-5 h-5 text-orange-400" />
-                    Identified Additives
+                <div className="space-y-4">
+                  <h4 className="text-lg font-bold px-2 flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-orange-500" />
+                    Additives & INS Codes
                   </h4>
-                  <div className="flex flex-wrap gap-2">
-                    {analysis.additives.map((add, i) => (
-                      <span key={i} className="bg-white/10 px-3 py-1 rounded-full text-xs font-medium">
-                        {add}
-                      </span>
+                  <div className="space-y-3">
+                    {analysis.additives.map((add, idx) => (
+                      <motion.div 
+                        key={idx}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.05 }}
+                        className="bg-slate-900 rounded-2xl p-4 text-white shadow-lg border border-slate-800"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex flex-col">
+                            <span className="font-bold text-white">{add.name}</span>
+                            {add.code && (
+                              <span className="text-[10px] font-mono text-orange-400 uppercase tracking-wider">
+                                Code: {add.code}
+                              </span>
+                            )}
+                          </div>
+                          <span className={cn(
+                            "text-[10px] font-bold uppercase px-2 py-1 rounded-full",
+                            add.risk === 'Low' ? "bg-green-500/20 text-green-400" :
+                            add.risk === 'Medium' ? "bg-yellow-500/20 text-yellow-400" :
+                            "bg-red-500/20 text-red-400"
+                          )}>
+                            {add.risk} Risk
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-300">{add.explanation}</p>
+                      </motion.div>
                     ))}
                   </div>
                 </div>

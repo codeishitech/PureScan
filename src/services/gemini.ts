@@ -6,7 +6,8 @@ const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 export async function analyzeIngredients(ingredients: string): Promise<AnalysisResult> {
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
-    contents: `Analyze the following food ingredients and provide a detailed health breakdown in JSON format.
+    contents: `Analyze the following food ingredients and provide a detailed health breakdown in JSON format. 
+    Pay special attention to technical names, E-numbers, and INS codes. Decode them into simple names and explain their purpose and health impact.
     
     Ingredients: ${ingredients}
     
@@ -22,7 +23,14 @@ export async function analyzeIngredients(ingredients: string): Promise<AnalysisR
           "risk": "Low" | "Medium" | "High"
         }
       ],
-      "additives": ["list of identified additives or INS codes"],
+      "additives": [
+        {
+          "name": "Common name of the additive",
+          "code": "INS/E code if applicable",
+          "explanation": "Detailed explanation of what it is, why it's used, and potential health concerns",
+          "risk": "Low" | "Medium" | "High"
+        }
+      ],
       "recommendation": "A simple health recommendation"
     }`,
     config: {
@@ -47,7 +55,16 @@ export async function analyzeIngredients(ingredients: string): Promise<AnalysisR
           },
           additives: {
             type: Type.ARRAY,
-            items: { type: Type.STRING }
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                code: { type: Type.STRING },
+                explanation: { type: Type.STRING },
+                risk: { type: Type.STRING, enum: ["Low", "Medium", "High"] }
+              },
+              required: ["name", "explanation", "risk"]
+            }
           },
           recommendation: { type: Type.STRING }
         },
