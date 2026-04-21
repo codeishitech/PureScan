@@ -1,6 +1,12 @@
 import { ProductData } from '../types';
+import { MOCK_PRODUCTS } from '../mockProducts';
 
 export async function fetchProductByBarcode(barcode: string): Promise<ProductData | null> {
+  // Check mock database first
+  if (MOCK_PRODUCTS[barcode]) {
+    return MOCK_PRODUCTS[barcode];
+  }
+
   try {
     const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
     const data = await response.json();

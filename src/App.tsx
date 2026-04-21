@@ -18,6 +18,7 @@ import { BarcodeScanner } from './components/BarcodeScanner';
 import { fetchProductByBarcode } from './services/foodApi';
 import { analyzeIngredients } from './services/gemini';
 import { ProductData, AnalysisResult } from './types';
+import { MOCK_PRODUCTS } from './mockProducts';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -33,6 +34,10 @@ export default function App() {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [manualInput, setManualInput] = useState('');
   const [showManual, setShowManual] = useState(false);
+  const [localProducts, setLocalProducts] = useState<Record<string, ProductData>>(MOCK_PRODUCTS);
+  const [showAddProduct, setShowAddProduct] = useState(false);
+  const [newProduct, setNewProduct] = useState({ name: '', brand: '', ingredients: '', barcode: '' });
+  const [showAllSamples, setShowAllSamples] = useState(false);
 
   const [uploadPreview, setUploadPreview] = useState<string | null>(null);
 
@@ -106,6 +111,15 @@ export default function App() {
     setError(null);
     
     try {
+      // Check local/mock first
+      if (localProducts[barcode]) {
+        const data = localProducts[barcode];
+        setProduct(data);
+        const result = await analyzeIngredients(data.ingredients);
+        setAnalysis(result);
+        return;
+      }
+
       const data = await fetchProductByBarcode(barcode);
       if (data) {
         setProduct(data);
@@ -117,14 +131,31 @@ export default function App() {
           setShowManual(true);
         }
       } else {
-        setError("Barcode not found in database. Please enter ingredients manually.");
-        setShowManual(true);
+        setError(`Barcode ${barcode} not found in database. You can add it using the "Add Product" button.`);
+        setShowAddProduct(true);
+        setNewProduct(prev => ({ ...prev, barcode }));
       }
     } catch (err) {
       setError("An error occurred. Please try again.");
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleAddProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProduct.name || !newProduct.ingredients || !newProduct.barcode) return;
+    
+    setLocalProducts(prev => ({
+      ...prev,
+      [newProduct.barcode]: {
+        name: newProduct.name,
+        brand: newProduct.brand,
+        ingredients: newProduct.ingredients
+      }
+    }));
+    setShowAddProduct(false);
+    handleScan(newProduct.barcode);
   };
 
   const handleManualSubmit = async (e: React.FormEvent) => {
@@ -154,6 +185,7 @@ export default function App() {
     setError(null);
     setManualInput('');
     setShowManual(false);
+    setShowAddProduct(false);
     setUploadPreview(null);
   };
 
@@ -166,20 +198,28 @@ export default function App() {
             <div className="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
               <ScanBarcode className="text-white w-5 h-5" />
             </div>
-            <h1 className="text-xl font-bold tracking-tight text-slate-900">PureScan</h1>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">FoodInsight</h1>
           </div>
-          <button 
-            onClick={() => setShowManual(!showManual)}
-            className="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors"
-          >
-            Manual Entry
-          </button>
+          <div className="flex gap-4">
+            <button 
+              onClick={() => setShowAddProduct(!showAddProduct)}
+              className="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors"
+            >
+              Add Product
+            </button>
+            <button 
+              onClick={() => setShowManual(!showManual)}
+              className="text-sm font-medium text-slate-600 hover:text-brand-600 transition-colors"
+            >
+              Manual Entry
+            </button>
+          </div>
         </div>
       </header>
 
       <main className="max-w-2xl mx-auto px-4 pt-8">
         <AnimatePresence mode="wait">
-          {!product && !isLoading && !showManual && (
+          {!product && !isLoading && !showManual && !showAddProduct && (
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -233,6 +273,49 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Sample Products */}
+              <div className="pt-8 space-y-4 text-left">
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <CheckCircle2 className="w-5 h-5 text-brand-600" />
+                  Quick Try (Database Examples)
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {Object.entries(localProducts)
+                    .slice(0, showAllSamples ? undefined : 6)
+                    .map(([barcode, data]) => {
+                      const productData = data as ProductData;
+                      return (
+                        <button 
+                          key={barcode} 
+                          onClick={() => handleScan(barcode)}
+                          className="flex items-center gap-3 p-3 rounded-xl bg-white border border-slate-200 hover:border-brand-300 transition-all text-left group"
+                        >
+                          {productData.image ? (
+                            <img src={productData.image} className="w-12 h-12 object-contain rounded border border-slate-100" alt={productData.name} referrerPolicy="no-referrer" />
+                          ) : (
+                            <div className="w-12 h-12 bg-slate-100 rounded flex items-center justify-center">
+                              <ScanBarcode className="w-6 h-6 text-slate-400" />
+                            </div>
+                          )}
+                          <div className="flex-1 overflow-hidden">
+                            <div className="text-sm font-bold truncate group-hover:text-brand-600 transition-colors">{productData.name}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">BC: {barcode}</div>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-brand-400 group-hover:translate-x-1 transition-all" />
+                        </button>
+                      );
+                    })}
+                </div>
+                {Object.keys(localProducts).length > 6 && (
+                  <button 
+                    onClick={() => setShowAllSamples(!showAllSamples)}
+                    className="w-full py-2 text-sm font-medium text-brand-600 hover:text-brand-700 transition-colors"
+                  >
+                    {showAllSamples ? "Show Less" : `View All ${Object.keys(localProducts).length} Products`}
+                  </button>
+                )}
+              </div>
+
               <div className="pt-8 grid grid-cols-3 gap-4">
                 {[
                   { icon: Info, label: "INS Codes", color: "text-blue-500" },
@@ -245,6 +328,62 @@ export default function App() {
                   </div>
                 ))}
               </div>
+            </motion.div>
+          )}
+
+          {showAddProduct && (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="space-y-6"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-slate-900">Register Product</h2>
+                <button onClick={() => setShowAddProduct(false)} className="p-2 hover:bg-slate-100 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-slate-600">Product not in database? Add it locally to scan it later!</p>
+              <form onSubmit={handleAddProduct} className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Barcode</label>
+                  <input 
+                    type="text"
+                    value={newProduct.barcode}
+                    onChange={(e) => setNewProduct(prev => ({ ...prev, barcode: e.target.value }))}
+                    className="w-full p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-500 transition-all font-mono"
+                    placeholder="Enter digits"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Product Name</label>
+                  <input 
+                    type="text"
+                    required
+                    value={newProduct.name}
+                    onChange={(e) => setNewProduct(prev => ({ ...prev, name: e.target.value }))}
+                    className="w-full p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-500 transition-all"
+                    placeholder="e.g. Dark Chocolate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-700">Ingredients</label>
+                  <textarea 
+                    required
+                    value={newProduct.ingredients}
+                    onChange={(e) => setNewProduct(prev => ({ ...prev, ingredients: e.target.value }))}
+                    className="w-full h-32 p-4 rounded-xl border border-slate-200 outline-none focus:ring-2 focus:ring-brand-500 transition-all resize-none"
+                    placeholder="Paste full ingredient list..."
+                  />
+                </div>
+                <button 
+                  type="submit"
+                  className="w-full bg-brand-600 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-brand-700 transition-all"
+                >
+                  Save & Analyze
+                </button>
+              </form>
             </motion.div>
           )}
 
