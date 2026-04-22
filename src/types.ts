@@ -8,6 +8,7 @@ export interface ProductData {
 
 export interface AnalysisResult {
   score: 'Healthy' | 'Moderate' | 'Risky';
+  riskScore: number; // New field: score out of 100
   summary: string;
   ingredients: Array<{
     name: string;

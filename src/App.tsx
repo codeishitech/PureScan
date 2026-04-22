@@ -485,13 +485,30 @@ export default function App() {
 
               {/* Score Card */}
               <div className={cn(
-                "rounded-3xl p-8 border-2 flex flex-col items-center text-center gap-4",
+                "rounded-3xl p-8 border-2 flex flex-col items-center text-center gap-4 relative overflow-hidden",
                 analysis.score === 'Healthy' ? "health-score-healthy" : 
                 analysis.score === 'Moderate' ? "health-score-moderate" : 
                 "health-score-risky"
               )}>
-                <div className="text-sm font-bold uppercase tracking-widest opacity-70">Health Score</div>
-                <div className="text-5xl font-black">{analysis.score}</div>
+                <div className="text-sm font-bold uppercase tracking-widest opacity-70">Health Intensity</div>
+                <div className="flex flex-col items-center">
+                  <div className="text-6xl font-black">{analysis.score}</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <div className="h-1.5 w-32 bg-black/10 rounded-full overflow-hidden">
+                      <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${analysis.riskScore}%` }}
+                        className={cn(
+                          "h-full rounded-full",
+                          analysis.score === 'Healthy' ? "bg-green-600" : 
+                          analysis.score === 'Moderate' ? "bg-orange-500" : 
+                          "bg-red-600"
+                        )}
+                      />
+                    </div>
+                    <span className="text-sm font-bold">{analysis.riskScore}/100 Risk</span>
+                  </div>
+                </div>
                 <p className="text-sm font-medium max-w-xs">{analysis.summary}</p>
               </div>
 

@@ -14,6 +14,7 @@ export async function analyzeIngredients(ingredients: string): Promise<AnalysisR
     The response must be a JSON object with this structure:
     {
       "score": "Healthy" | "Moderate" | "Risky",
+      "riskScore": number (0 to 100, where 0 is most healthy and 100 is most risky),
       "summary": "A brief overall summary",
       "ingredients": [
         {
@@ -39,6 +40,7 @@ export async function analyzeIngredients(ingredients: string): Promise<AnalysisR
         type: Type.OBJECT,
         properties: {
           score: { type: Type.STRING, enum: ["Healthy", "Moderate", "Risky"] },
+          riskScore: { type: Type.NUMBER, description: "Risk score from 0 (Safe) to 100 (Extremely Risky)" },
           summary: { type: Type.STRING },
           ingredients: {
             type: Type.ARRAY,
@@ -68,7 +70,7 @@ export async function analyzeIngredients(ingredients: string): Promise<AnalysisR
           },
           recommendation: { type: Type.STRING }
         },
-        required: ["score", "summary", "ingredients", "additives", "recommendation"]
+        required: ["score", "riskScore", "summary", "ingredients", "additives", "recommendation"]
       }
     }
   });

@@ -8,7 +8,12 @@ export async function fetchProductByBarcode(barcode: string): Promise<ProductDat
   }
 
   try {
-    const response = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+    const response = await fetch(`/api/food/${barcode}`);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
     const data = await response.json();
 
     if (data.status === 1 && data.product) {
