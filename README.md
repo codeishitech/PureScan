@@ -38,7 +38,7 @@ GEMINI_API_KEY=your_google_ai_studio_api_key
 -   npm
 
 ### RUN THE APP
--   [https://ai.studio/apps/7ae25447-57bf-4685-a455-9b5d10a9b6d4](https://aistudio.google.com/u/1/apps/7ae25447-57bf-4685-a455-9b5d10a9b6d4)
+-   [https://aistudio.google.com/apps/7ae25447-57bf-4685-a455-9b5d10a9b6d4?showPreview=true](https://aistudio.google.com/apps/7ae25447-57bf-4685-a455-9b5d10a9b6d4?showPreview=true)
 
 ### Installation
 
